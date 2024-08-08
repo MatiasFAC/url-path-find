@@ -165,7 +165,6 @@ def list(
     El comando sería: ```python main.py list urls.txt /path1 /path2```
     """
     global stop_event
-    threads: int = 50, 
     stop_event.clear()
     data = []
     current_time = time.strftime("%Y-%m-%d-%H-%M-%S")
@@ -191,10 +190,12 @@ def list(
         print("Process interrupted by user. Exiting...")
         stop_event.set()
 
+    data.append({"url": "URL", "status_code": "Status Code", "public_ip": "Public IP", "web_tittle": "Web Tittle"})
+
     signal.signal(signal.SIGINT, signal_handler)
 
     try:
-        with ThreadPoolExecutor(max_workers=threads) as executor:
+        with ThreadPoolExecutor(max_workers=50) as executor:
             future_to_url = {executor.submit(process_url, url, i): (url, i) for url in url_list for i in path}
             for future in as_completed(future_to_url):
                 url, i = future_to_url[future]
