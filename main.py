@@ -130,7 +130,6 @@ def one(
 def list(
     flat_file: str, 
     path: list[str], 
-    threads: int = 30, 
     export_csv: bool = False,
     ) -> None:
     """
@@ -166,6 +165,7 @@ def list(
     El comando sería: ```python main.py list urls.txt /path1 /path2```
     """
     global stop_event
+    threads: int = 50, 
     stop_event.clear()
     data = []
     current_time = time.strftime("%Y-%m-%d-%H-%M-%S")
