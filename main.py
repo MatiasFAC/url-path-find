@@ -5,10 +5,10 @@ import socket
 from typing_extensions import Annotated
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 app = typer.Typer(add_completion=False, help="URL Path find CLIs.", rich_markup_mode="markdown")
-
 
 def export_list_to_csv(data: dict, file: str):
     try:
@@ -65,7 +65,7 @@ def get_public_ip(url: str) -> str:
         return ""
 
 
-def web_request(url: str, path: str, timeout: int = 10) -> dict["url": str, "status_code": int, "public_ip": str, "web_tittle": str, "content": str,]:
+def web_request(url: str, path: str, timeout: int = 10) -> dict:
     url = remove_last_slash_url(url)
     full_url = f"{url}{path}"
     public_ip = get_public_ip(url)
@@ -76,7 +76,6 @@ def web_request(url: str, path: str, timeout: int = 10) -> dict["url": str, "sta
             "status_code": response.status_code,
             "public_ip": public_ip,
             "web_tittle": response.text.split("<title>")[1].split("</title>")[0],
-            # "content": response.text,
         }
     except requests.exceptions.HTTPError as e:
         return {
@@ -84,7 +83,6 @@ def web_request(url: str, path: str, timeout: int = 10) -> dict["url": str, "sta
             "status_code": 404,
             "public_ip": public_ip,
             "web_tittle": "",
-            # "content": str(e),
         }
     except requests.exceptions.RequestException as e:
         return {
@@ -92,7 +90,6 @@ def web_request(url: str, path: str, timeout: int = 10) -> dict["url": str, "sta
             "status_code": 0,
             "public_ip": public_ip,
             "web_tittle": "",
-            # "content": str(e),
         }
     except Exception as e:
         return {
@@ -100,9 +97,8 @@ def web_request(url: str, path: str, timeout: int = 10) -> dict["url": str, "sta
             "status_code": 0,
             "public_ip": public_ip,
             "web_tittle": "",
-            # "content": str(e),
         }
-    
+
 
 @app.command()
 def one(
@@ -118,17 +114,19 @@ def one(
 
     example: ```python main.py one https://localhost / /api /orm```
     """
-    # print(url)
-    # print(path)
-    # print(len(path))
     for i in path:
         result = web_request(url, i)
         print(json.dumps(result))
     return
- 
+
 
 @app.command()
-def list(flat_file: str, path: list[str], export_csv: bool = False) -> None:
+def list(
+    flat_file: str, 
+    path: list[str], 
+    threads: int = 30, 
+    export_csv: bool = False,
+    ) -> None:
     """
     **:sparkles: Lee una lista de URLs desde un archivo de texto plano y realiza una solicitud HTTP a cada URL con los paths especificados.**
     Parámetros:
@@ -164,40 +162,44 @@ def list(flat_file: str, path: list[str], export_csv: bool = False) -> None:
     data = []
     current_time = time.strftime("%Y-%m-%d-%H-%M-%S")
 
-    # print(flat_file)
-    # print(path)
-
     if not check_exist_file(flat_file):
         print(f"File {flat_file} not found")
         return
 
     url_list = read_file(flat_file)
 
-    # print(url_list)
-    # print(len(url_list))
-
     if not len(url_list):
         print(f"File {flat_file} is empty")
         return
 
-    for url in url_list:
-        for i in path:
-            result = web_request(url, i)
-            print(json.dumps(result))
-            data.append(result)
-            result = ""
-            if export_csv:
-                export_list_to_csv(data, f"{current_time}.csv")
-    # print(len(data))
-    return
+    def process_url(url, path):
+        result = web_request(url, path)
+        print(json.dumps(result))
+        return result
 
+    try:
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            future_to_url = {executor.submit(process_url, url, i): (url, i) for url in url_list for i in path}
+            for future in as_completed(future_to_url):
+                url, i = future_to_url[future]
+                try:
+                    result = future.result()
+                    data.append(result)
+                except Exception as e:
+                    print(f"Error processing URL {url} with path {i}: {e}")
+    except KeyboardInterrupt:
+        print("Process interrupted by user. Exiting...")
+    finally:
+        if export_csv:
+            export_list_to_csv(data, f"{current_time}.csv")
+
+    return
 
 @app.callback(invoke_without_command=True)
 def default(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
         raise typer.Exit()
-
 
 if __name__ == "__main__":
     app()
