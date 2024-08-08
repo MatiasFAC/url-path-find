@@ -6,9 +6,15 @@ from typing_extensions import Annotated
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import signal
+import threading
 
 
 app = typer.Typer(add_completion=False, help="URL Path find CLIs.", rich_markup_mode="markdown")
+
+
+stop_event = threading.Event()
+
 
 def export_list_to_csv(data: dict, file: str):
     try:
@@ -159,6 +165,8 @@ def list(
 
     El comando sería: ```python main.py list urls.txt /path1 /path2```
     """
+    global stop_event
+    stop_event.clear()
     data = []
     current_time = time.strftime("%Y-%m-%d-%H-%M-%S")
 
@@ -173,33 +181,44 @@ def list(
         return
 
     def process_url(url, path):
+        if stop_event.is_set():
+            return None
         result = web_request(url, path)
         print(json.dumps(result))
         return result
+
+    def signal_handler(sig, frame):
+        print("Process interrupted by user. Exiting...")
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, signal_handler)
 
     try:
         with ThreadPoolExecutor(max_workers=threads) as executor:
             future_to_url = {executor.submit(process_url, url, i): (url, i) for url in url_list for i in path}
             for future in as_completed(future_to_url):
                 url, i = future_to_url[future]
+                if stop_event.is_set():
+                    break
                 try:
                     result = future.result()
-                    data.append(result)
+                    if result:
+                        data.append(result)
                 except Exception as e:
                     print(f"Error processing URL {url} with path {i}: {e}")
-    except KeyboardInterrupt:
-        print("Process interrupted by user. Exiting...")
     finally:
         if export_csv:
             export_list_to_csv(data, f"{current_time}.csv")
 
     return
 
+
 @app.callback(invoke_without_command=True)
 def default(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
         raise typer.Exit()
+
 
 if __name__ == "__main__":
     app()
