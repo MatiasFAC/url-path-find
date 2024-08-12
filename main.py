@@ -166,7 +166,7 @@ def list(
     """
     global stop_event
     stop_event.clear()
-    data = []
+    data = [{"url": "URL", "status_code": "Status Code", "public_ip": "Public IP", "web_tittle": "Web Tittle"}]
     current_time = time.strftime("%Y-%m-%d-%H-%M-%S")
 
     if not check_exist_file(flat_file):
@@ -190,7 +190,8 @@ def list(
         print("Process interrupted by user. Exiting...")
         stop_event.set()
 
-    data.append({"url": "URL", "status_code": "Status Code", "public_ip": "Public IP", "web_tittle": "Web Tittle"})
+    total_operations = len(url_list) * len(path)
+    count_operations = 0
 
     signal.signal(signal.SIGINT, signal_handler)
 
@@ -198,6 +199,8 @@ def list(
         with ThreadPoolExecutor(max_workers=50) as executor:
             future_to_url = {executor.submit(process_url, url, i): (url, i) for url in url_list for i in path}
             for future in as_completed(future_to_url):
+                count_operations += 1
+                print(f"Progress: {count_operations}/{total_operations}")
                 url, i = future_to_url[future]
                 if stop_event.is_set():
                     break

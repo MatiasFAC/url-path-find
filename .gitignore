@@ -1,4 +1,4 @@
-url_list.txt
+url_list*.txt
 output/
 *.csv
 
